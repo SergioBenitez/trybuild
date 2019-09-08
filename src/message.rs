@@ -137,6 +137,10 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     println!("ACTUAL OUTPUT:");
     snippet(Red, actual);
     println!();
+    term::bold_color(Magenta);
+    print!("DIFF:");
+    diff(expected, actual);
+    println!();
 }
 
 pub(crate) fn output(warnings: &str, output: &Output) {
@@ -202,11 +206,11 @@ pub(crate) fn warnings(warnings: &str) {
     println!();
 }
 
-fn snippet(color: Color, content: &str) {
-    fn dotted_line() {
-        println!("{}", "┈".repeat(60));
-    }
+fn dotted_line() {
+    println!("{}", "┈".repeat(60));
+}
 
+fn snippet(color: Color, content: &str) {
     term::color(color);
     dotted_line();
 
@@ -218,6 +222,40 @@ fn snippet(color: Color, content: &str) {
     }
 
     term::color(color);
+    dotted_line();
+    term::reset();
+}
+
+fn diff(expected: &str, actual: &str) {
+    use diff::Result as Diff;
+
+    term::color(Red);
+    print!(" -expected ");
+    term::color(Green);
+    println!("+actual ");
+
+    term::bold_color(Magenta);
+    dotted_line();
+
+    let diff = diff::chars(expected, actual);
+    for i in 0..diff.len() {
+        term::reset();
+        match diff[i]  {
+            Diff::Both(x, _) => {
+                print!("{}", x);
+            }
+            Diff::Right(x) => {
+                if x != '\n' { term::bg_fg_color(Green, Black); }
+                print!("{}", x);
+            }
+            Diff::Left(x) => {
+                if x != '\n' { term::bg_fg_color(Red, White); }
+                print!("{}", x);
+            }
+        }
+    }
+
+    term::bold_color(Magenta);
     dotted_line();
     term::reset();
 }

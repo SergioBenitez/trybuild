@@ -12,7 +12,7 @@ pub fn trim<S: AsRef<[u8]>>(output: S) -> String {
     normalized
 }
 
-pub fn diagnostics(output: Vec<u8>) -> Variations {
+pub fn diagnostics(output: &[u8]) -> Variations {
     let mut from_bytes = String::from_utf8_lossy(&output).to_string();
     from_bytes = from_bytes.replace("\r\n", "\n");
 

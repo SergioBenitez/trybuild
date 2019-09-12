@@ -45,6 +45,12 @@ pub struct Bin {
 #[derive(Serialize, Clone, Debug)]
 pub struct Name(pub String);
 
+impl From<String> for Name {
+    fn from(s: String) -> Name {
+        Name(s)
+    }
+}
+
 #[derive(Serialize, Debug)]
 pub struct Config {
     pub build: Build,

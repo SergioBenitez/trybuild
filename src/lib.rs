@@ -217,49 +217,94 @@ mod normalize;
 mod run;
 mod rustflags;
 
+use std::{fmt, thread};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::thread;
 
-#[derive(Debug)]
-pub struct TestCases {
-    runner: RefCell<Runner>,
+use cargo::CargoRunner;
+use std::process::Output;
+
+pub trait TestRunner {
+    type Error: fmt::Debug + fmt::Display;
+
+    fn prepare(&mut self, tests: &[Test]) -> Result<(), Self::Error>;
+    fn build(&mut self, test: &Test) -> Result<Output, Self::Error>;
+    fn run(&mut self, test: &Test) -> Result<Output, Self::Error>;
 }
 
 #[derive(Debug)]
-struct Runner {
+pub struct TestCases<R: TestRunner> {
+    runner: RefCell<Runner<R>>,
+}
+
+#[derive(Debug)]
+struct Runner<R: TestRunner> {
     tests: Vec<Test>,
+    runner: R,
 }
 
 #[derive(Clone, Debug)]
-struct Test {
+pub struct Test {
+    name: String,
     path: PathBuf,
     expected: Expected,
 }
 
+impl Test {
+    pub(crate) fn gen_name(n: usize) -> String {
+        format!("trybuild{:03}", n)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
-enum Expected {
+pub enum Expected {
     Pass,
     CompileFail,
 }
 
-impl TestCases {
+impl TestCases<CargoRunner> {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new() -> TestCases<CargoRunner> {
         TestCases {
-            runner: RefCell::new(Runner { tests: Vec::new() }),
+            runner: RefCell::new(Runner {
+                tests: Vec::new(),
+                runner: CargoRunner::default()
+            }),
+        }
+    }
+}
+
+impl<R: TestRunner> TestCases<R> {
+    pub fn custom(runner: R) -> Self {
+        TestCases {
+            runner: RefCell::new(Runner {
+                tests: Vec::new(),
+                runner: runner
+            }),
         }
     }
 
     pub fn pass<P: AsRef<Path>>(&self, path: P) {
+        let num = self.runner.borrow().tests.len();
         self.runner.borrow_mut().tests.push(Test {
+            name: Test::gen_name(num),
             path: path.as_ref().to_owned(),
             expected: Expected::Pass,
         });
     }
 
     pub fn compile_fail<P: AsRef<Path>>(&self, path: P) {
+        let num = self.runner.borrow().tests.len();
         self.runner.borrow_mut().tests.push(Test {
+            name: Test::gen_name(num),
             path: path.as_ref().to_owned(),
             expected: Expected::CompileFail,
         });
@@ -267,7 +312,7 @@ impl TestCases {
 }
 
 #[doc(hidden)]
-impl Drop for TestCases {
+impl<R: TestRunner> Drop for TestCases<R> {
     fn drop(&mut self) {
         if !thread::panicking() {
             self.runner.borrow_mut().run();

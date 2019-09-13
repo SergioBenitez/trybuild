@@ -1,10 +1,10 @@
 use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use super::{Expected, Runner, Test};
+use super::{TestKind, Runner, Test};
 use crate::cargo::{prepare_project, Project};
 use crate::env::Update;
 use crate::error::{Error, Result};
@@ -56,7 +56,11 @@ impl<R: TestRunner> Runner<R> {
     }
 
     fn run_one(&mut self, test: &Test, project: &Project) -> Result<()> {
-        let show_expected = project.has_pass && project.has_compile_fail;
+        let num_kinds = (project.has_pass as u8)
+            + (project.has_compile_fail as u8)
+            + (project.has_output as u8);
+
+        let show_expected = num_kinds > 1;
         message::begin_test(test, show_expected);
         check_exists(&test.path)?;
 
@@ -68,9 +72,10 @@ impl<R: TestRunner> Runner<R> {
                 .replace(&*project.source_dir.to_string_lossy(), "$DIR")
         });
 
-        let check = match test.expected {
-            Expected::Pass => Test::check_pass,
-            Expected::CompileFail => Test::check_compile_fail,
+        let check = match test.kind {
+            TestKind::Pass => Test::check_pass,
+            TestKind::CompileFail => Test::check_compile_fail,
+            TestKind::Output => Test::check_output,
         };
 
         check(test, &mut self.runner, project, output, build_stderr)
@@ -103,6 +108,35 @@ impl Test {
         }
     }
 
+    fn check_output<R: TestRunner>(
+        &self,
+        runner: &mut R,
+        project: &Project,
+        build_output: Output,
+        variations: Variations,
+    ) -> Result<()> {
+        let preferred = variations.preferred();
+        if !build_output.status.success() {
+            message::failed_to_build(preferred);
+            return Err(Error::BuildFail);
+        }
+
+        let output = runner.run(self)
+            .map_err(|e| Error::External(e.to_string()))?;
+
+        println!(); println!();
+        let stderr_path = self.path.with_extension("stderr");
+        message::output_prefix("stderr");
+        check_output(project, &stderr_path, false, &output.stderr)?;
+
+        let stdout_path = self.path.with_extension("stdout");
+        message::output_prefix("stdout");
+        check_output(project, &stdout_path, false, &output.stdout).map(|_| ())?;
+
+        println!();
+        Ok(())
+    }
+
     fn check_compile_fail<R: TestRunner>(
         &self,
         _runner: &mut R,
@@ -119,52 +153,86 @@ impl Test {
             return Err(Error::ShouldNotHaveCompiled);
         }
 
+        // FIXME: This is different than what was here before...
+        // Before, it used `preferred`, now, it uses stderr directly.
         let stderr_path = self.path.with_extension("stderr");
-
-        if !stderr_path.exists() {
-            match project.update {
-                Update::Wip => {
-                    let wip_dir = Path::new("wip");
-                    fs::create_dir_all(wip_dir)?;
-                    let gitignore_path = wip_dir.join(".gitignore");
-                    fs::write(gitignore_path, "*\n")?;
-                    let stderr_name = stderr_path
-                        .file_name()
-                        .unwrap_or_else(|| OsStr::new("test.stderr"));
-                    let wip_path = wip_dir.join(stderr_name);
-                    message::write_stderr_wip(&wip_path, &stderr_path, preferred);
-                    fs::write(wip_path, preferred).map_err(Error::WriteStderr)?;
-                }
-                Update::Overwrite => {
-                    message::overwrite_stderr(&stderr_path, preferred);
-                    fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
-                }
+        match check_output(project, &stderr_path, false, &build_output.stderr) {
+            Ok(true) => {
+                message::fail_output(Warn, &build_output.stdout);
+                return Ok(());
             }
-            message::fail_output(Warn, &build_output.stdout);
-            return Ok(());
-        }
-
-        let expected = fs::read_to_string(&stderr_path)
-            .map_err(Error::ReadStderr)?
-            .replace("\r\n", "\n");
-
-        if variations.any(|stderr| expected == stderr) {
-            message::ok();
-            return Ok(());
-        }
-
-        match project.update {
-            Update::Wip => {
-                message::mismatch(&expected, preferred);
-                Err(Error::Mismatch)
-            }
-            Update::Overwrite => {
-                message::overwrite_stderr(&stderr_path, preferred);
-                fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
-                Ok(())
-            }
+            result => result.map(|_| ())
         }
     }
+}
+
+fn check_output(
+    project: &Project,
+    path: &Path,
+    must_exist: bool,
+    output: &[u8]
+) -> Result<bool> {
+    let content = normalize::diagnostics(output);
+    if !path.exists() && (must_exist || !output.is_empty()) {
+        make_wip(project, path, content.preferred())?;
+        return Ok(true);
+    }
+
+    let expected = if path.exists() {
+        let expected = fs::read_to_string(path)
+            .map_err(Error::ReadStderr)? // FIXME
+            .replace("\r\n", "\n");
+
+        if content.any(|v| expected == v) {
+            message::ok();
+            return Ok(false);
+        }
+
+        expected
+    } else if output.is_empty() {
+        message::ok();
+        return Ok(false);
+    } else {
+        "".into()
+    };
+
+    let actual = content.preferred();
+    match project.update {
+        Update::Wip => {
+            message::mismatch(&expected, actual);
+            Err(Error::Mismatch)
+        }
+        Update::Overwrite => {
+            message::overwrite(path, actual);
+            fs::write(path, actual).map_err(Error::WriteStderr)?; // FIXME
+            Ok(false)
+        }
+    }
+}
+
+fn make_wip(project: &Project, path: &Path, content: &str) -> Result<()> {
+    let ext = path.extension().expect("wip path has extension");
+    match project.update {
+        Update::Wip => {
+            let wip_dir = Path::new("wip");
+            fs::create_dir_all(wip_dir)?;
+            let gitignore_path = wip_dir.join(".gitignore");
+            fs::write(gitignore_path, "*\n")?;
+
+            let default = Path::new("test").with_extension(ext);
+            let name = path.file_name()
+                .unwrap_or_else(|| default.as_os_str());
+            let wip_path = wip_dir.join(name);
+            message::write_wip(&wip_path, &path, content);
+            fs::write(wip_path, content).map_err(Error::WriteStderr)?;
+        }
+        Update::Overwrite => {
+            message::overwrite(&path, content);
+            fs::write(path, content).map_err(Error::WriteStderr)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn check_exists(path: &Path) -> Result<()> {
@@ -200,7 +268,7 @@ fn expand_globs(tests: &[Test]) -> (Vec<Test>, Vec<(Test, Error)>) {
                             expanded_tests.push(Test {
                                 name,
                                 path,
-                                expected: test.expected
+                                kind: test.kind
                             });
                         }
                     }

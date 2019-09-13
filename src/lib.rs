@@ -247,7 +247,7 @@ struct Runner<R: TestRunner> {
 pub struct Test {
     name: String,
     path: PathBuf,
-    expected: Expected,
+    kind: TestKind,
 }
 
 impl Test {
@@ -262,12 +262,17 @@ impl Test {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    pub fn kind(&self) -> TestKind {
+        self.kind
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum Expected {
+pub enum TestKind {
     Pass,
     CompileFail,
+    Output,
 }
 
 impl TestCases<CargoRunner> {
@@ -292,22 +297,25 @@ impl<R: TestRunner> TestCases<R> {
         }
     }
 
-    pub fn pass<P: AsRef<Path>>(&self, path: P) {
+    fn push_test<P: AsRef<Path>>(&self, path: P, kind: TestKind) {
         let num = self.runner.borrow().tests.len();
         self.runner.borrow_mut().tests.push(Test {
             name: Test::gen_name(num),
             path: path.as_ref().to_owned(),
-            expected: Expected::Pass,
+            kind,
         });
     }
 
+    pub fn pass<P: AsRef<Path>>(&self, path: P) {
+        self.push_test(path, TestKind::Pass);
+    }
+
     pub fn compile_fail<P: AsRef<Path>>(&self, path: P) {
-        let num = self.runner.borrow().tests.len();
-        self.runner.borrow_mut().tests.push(Test {
-            name: Test::gen_name(num),
-            path: path.as_ref().to_owned(),
-            expected: Expected::CompileFail,
-        });
+        self.push_test(path, TestKind::CompileFail);
+    }
+
+    pub fn output<P: AsRef<Path>>(&self, path: P) {
+        self.push_test(path, TestKind::Output);
     }
 }
 

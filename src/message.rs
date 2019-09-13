@@ -1,6 +1,6 @@
 use termcolor::Color::{self, *};
 
-use super::{Expected, Test};
+use super::{TestKind, Test};
 use crate::error::Error;
 use crate::normalize;
 use crate::term;
@@ -68,9 +68,10 @@ pub(crate) fn begin_test(test: &Test, show_expected: bool) {
     term::reset();
 
     if show_expected {
-        match test.expected {
-            Expected::Pass => print!(" [should pass]"),
-            Expected::CompileFail => print!(" [should fail to compile]"),
+        match test.kind {
+            TestKind::Pass => print!(" [should pass]"),
+            TestKind::CompileFail => print!(" [should fail to compile]"),
+            TestKind::Output => print!(" [should produce output]"),
         }
     }
 
@@ -88,14 +89,21 @@ pub(crate) fn should_not_have_compiled() {
     term::bold_color(Red);
     println!("error");
     term::color(Red);
-    println!("Expected test case to fail to compile, but it succeeded.");
+    println!("TestKind test case to fail to compile, but it succeeded.");
     term::reset();
     println!();
 }
 
-pub(crate) fn write_stderr_wip(wip_path: &Path, stderr_path: &Path, stderr: &str) {
+pub(crate) fn output_prefix(kind: &str) {
+    term::bold_color(Blue);
+    print!("{}", kind);
+    term::reset();
+    print!(" ... ");
+}
+
+pub(crate) fn write_wip(wip_path: &Path, path: &Path, content: &str) {
     let wip_path = wip_path.to_string_lossy();
-    let stderr_path = stderr_path.to_string_lossy();
+    let path = path.to_string_lossy();
 
     term::bold_color(Yellow);
     println!("wip");
@@ -105,22 +113,22 @@ pub(crate) fn write_stderr_wip(wip_path: &Path, stderr_path: &Path, stderr: &str
     println!(": writing the following output to `{}`.", wip_path);
     println!(
         "Move this file to `{}` to accept it as correct.",
-        stderr_path,
+        path,
     );
-    snippet(Yellow, stderr);
+    snippet(Yellow, content);
     println!();
 }
 
-pub(crate) fn overwrite_stderr(stderr_path: &Path, stderr: &str) {
-    let stderr_path = stderr_path.to_string_lossy();
+pub(crate) fn overwrite(path: &Path, content: &str) {
+    let path = path.to_string_lossy();
 
     term::bold_color(Yellow);
     println!("wip");
     println!();
     print!("NOTE");
     term::reset();
-    println!(": writing the following output to `{}`.", stderr_path);
-    snippet(Yellow, stderr);
+    println!(": writing the following output to `{}`.", path);
+    snippet(Yellow, content);
     println!();
 }
 
@@ -206,7 +214,7 @@ pub(crate) fn warnings(warnings: &str) {
     println!();
 }
 
-fn dotted_line() {
+pub(crate) fn dotted_line() {
     println!("{}", "┈".repeat(60));
 }
 

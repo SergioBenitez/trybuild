@@ -9,6 +9,7 @@ use std::path::PathBuf;
 pub enum Error {
     Cargo(io::Error),
     CargoFail,
+    BuildFail,
     Glob(GlobError),
     Io(io::Error),
     Metadata(serde_json::Error),
@@ -18,6 +19,7 @@ pub enum Error {
     PkgName(env::VarError),
     ProjectDir,
     ReadStderr(io::Error),
+    ReadStdout(io::Error),
     RunFailed,
     ShouldNotHaveCompiled,
     TomlDe(toml::de::Error),
@@ -36,6 +38,7 @@ impl Display for Error {
         match self {
             Cargo(e) => write!(f, "failed to execute cargo: {}", e),
             CargoFail => write!(f, "cargo reported an error"),
+            BuildFail => write!(f, "failed to build"),
             Glob(e) => write!(f, "{}", e),
             Io(e) => write!(f, "{}", e),
             Metadata(e) => write!(f, "failed to read cargo metadata: {}", e),
@@ -45,6 +48,7 @@ impl Display for Error {
             PkgName(e) => write!(f, "failed to detect CARGO_PKG_NAME: {}", e),
             ProjectDir => write!(f, "failed to determine name of project dir"),
             ReadStderr(e) => write!(f, "failed to read stderr file: {}", e),
+            ReadStdout(e) => write!(f, "failed to read stdout file: {}", e),
             RunFailed => write!(f, "execution of the test case was unsuccessful"),
             ShouldNotHaveCompiled => {
                 write!(f, "expected test case to fail to compile, but it succeeded")

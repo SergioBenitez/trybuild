@@ -7,7 +7,7 @@ use crate::env::Update;
 use crate::dependencies::{self, Dependency};
 use crate::manifest::{Bin, Build, Config, Manifest, Name, Package, Workspace};
 use crate::error::{Error, Result};
-use crate::{Test, Expected, TestRunner};
+use crate::{Test, TestKind, TestRunner};
 use crate::rustflags;
 
 use serde::Deserialize;
@@ -26,6 +26,7 @@ pub struct Project {
     pub(crate) update: Update,
     pub has_pass: bool,
     pub(crate) has_compile_fail: bool,
+    pub(crate) has_output: bool,
     pub features: Option<Vec<String>>,
     pub(crate) workspace: PathBuf,
 }
@@ -83,10 +84,12 @@ pub fn prepare_project(tests: &[Test]) -> Result<(Project, Manifest)> {
 
     let mut has_pass = false;
     let mut has_compile_fail = false;
+    let mut has_output = false;
     for e in tests {
-        match e.expected {
-            Expected::Pass => has_pass = true,
-            Expected::CompileFail => has_compile_fail = true,
+        match e.kind {
+            TestKind::Pass => has_pass = true,
+            TestKind::CompileFail => has_compile_fail = true,
+            TestKind::Output => has_output = true,
         }
     }
 
@@ -104,6 +107,7 @@ pub fn prepare_project(tests: &[Test]) -> Result<(Project, Manifest)> {
         update: crate::env::Update::env()?,
         has_pass,
         has_compile_fail,
+        has_output,
         features,
         workspace,
     };
@@ -200,7 +204,7 @@ fn cargo(project: &Project) -> Command {
 
 pub fn build_dependencies(project: &Project) -> Result<()> {
     let status = cargo(project)
-        .arg(if project.has_pass { "build" } else { "check" })
+        .arg(if project.has_pass || project.has_output { "build" } else { "check" })
         .arg("--bin")
         .arg(&project.name)
         .status()
@@ -224,7 +228,7 @@ pub fn build_test(project: &Project, name: &str) -> Result<Output> {
         .status();
 
     cargo(project)
-        .arg(if project.has_pass { "build" } else { "check" })
+        .arg(if project.has_pass || project.has_output { "build" } else { "check" })
         .arg("--bin")
         .arg(name)
         .args(features(project))

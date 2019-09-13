@@ -1,3 +1,6 @@
+use crate::Test;
+use crate::cargo::Project;
+
 pub fn trim<S: AsRef<[u8]>>(output: S) -> String {
     let bytes = output.as_ref();
     let mut normalized = String::from_utf8_lossy(bytes).to_string();
@@ -12,9 +15,11 @@ pub fn trim<S: AsRef<[u8]>>(output: S) -> String {
     normalized
 }
 
-pub fn diagnostics(output: &[u8]) -> Variations {
+pub fn diagnostics(output: &[u8], test: &Test, project: &Project) -> Variations {
     let mut from_bytes = String::from_utf8_lossy(&output).to_string();
-    from_bytes = from_bytes.replace("\r\n", "\n");
+    from_bytes = from_bytes.replace("\r\n", "\n")
+            .replace(&test.name, "$CRATE")
+            .replace(&*project.source_dir.to_string_lossy(), "$DIR");
 
     let variations = [Basic, StripCouldNotCompile]
         .iter()
@@ -29,12 +34,6 @@ pub struct Variations {
 }
 
 impl Variations {
-    pub fn map<F: FnMut(String) -> String>(self, f: F) -> Self {
-        Variations {
-            variations: self.variations.into_iter().map(f).collect(),
-        }
-    }
-
     pub fn preferred(&self) -> &str {
         self.variations.last().unwrap()
     }

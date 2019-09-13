@@ -67,11 +67,7 @@ impl<R: TestRunner> Runner<R> {
         let output = self.runner.build(test)
             .map_err(|e| Error::External(e.to_string()))?;
 
-        let build_stderr = normalize::diagnostics(&output.stderr).map(|stderr| {
-            stderr.replace(&test.name, "$CRATE")
-                .replace(&*project.source_dir.to_string_lossy(), "$DIR")
-        });
-
+        let build_stderr = normalize::diagnostics(&output.stderr, test, project);
         let check = match test.kind {
             TestKind::Pass => Test::check_pass,
             TestKind::CompileFail => Test::check_compile_fail,
@@ -127,11 +123,11 @@ impl Test {
         println!(); println!();
         let stderr_path = self.path.with_extension("stderr");
         message::output_prefix("stderr");
-        check_output(project, &stderr_path, false, &output.stderr)?;
+        check_output(self, project, &stderr_path, false, &output.stderr)?;
 
         let stdout_path = self.path.with_extension("stdout");
         message::output_prefix("stdout");
-        check_output(project, &stdout_path, false, &output.stdout).map(|_| ())?;
+        check_output(self, project, &stdout_path, false, &output.stdout).map(|_| ())?;
 
         println!();
         Ok(())
@@ -156,7 +152,7 @@ impl Test {
         // FIXME: This is different than what was here before...
         // Before, it used `preferred`, now, it uses stderr directly.
         let stderr_path = self.path.with_extension("stderr");
-        match check_output(project, &stderr_path, false, &build_output.stderr) {
+        match check_output(self, project, &stderr_path, false, &build_output.stderr) {
             Ok(true) => {
                 message::fail_output(Warn, &build_output.stdout);
                 return Ok(());
@@ -166,13 +162,15 @@ impl Test {
     }
 }
 
+// FIXME: Things aren't being normalized correctly.
 fn check_output(
+    test: &Test,
     project: &Project,
     path: &Path,
     must_exist: bool,
     output: &[u8]
 ) -> Result<bool> {
-    let content = normalize::diagnostics(output);
+    let content = normalize::diagnostics(output, test, project);
     if !path.exists() && (must_exist || !output.is_empty()) {
         make_wip(project, path, content.preferred())?;
         return Ok(true);

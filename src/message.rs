@@ -245,20 +245,19 @@ fn diff(expected: &str, actual: &str) {
     term::bold_color(Magenta);
     dotted_line();
 
-    let diff = diff::chars(expected, actual);
-    for i in 0..diff.len() {
-        term::reset();
-        match diff[i]  {
+    for diff in diff::lines(expected, actual) {
+        match diff {
             Diff::Both(x, _) => {
-                print!("{}", x);
+                term::reset();
+                println!(" {}", x);
             }
             Diff::Right(x) => {
-                if x != '\n' { term::bg_fg_color(Green, Black); }
-                print!("{}", x);
+                term::color(Green);
+                println!("+{}", x);
             }
             Diff::Left(x) => {
-                if x != '\n' { term::bg_fg_color(Red, White); }
-                print!("{}", x);
+                term::color(Red);
+                println!("-{}", x);
             }
         }
     }

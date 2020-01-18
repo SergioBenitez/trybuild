@@ -56,6 +56,7 @@ fn apply(original: &str, normalization: Normalization, source_dir: &str) -> Stri
 
     for line in original.lines() {
         if let Some(line) = filter(line, normalization) {
+            let line = line.trim_end();
             if line.contains(&*source_dir) {
                 if cfg!(windows) {
                     normalized += &line

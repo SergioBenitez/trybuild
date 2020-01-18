@@ -225,7 +225,7 @@ use cargo::CargoRunner;
 use std::process::Output;
 
 pub trait TestRunner {
-    type Error: fmt::Debug + fmt::Display;
+    type Error: fmt::Display;
 
     fn prepare(&mut self, tests: &[Test]) -> Result<(), Self::Error>;
     fn build(&mut self, test: &Test) -> Result<Output, Self::Error>;

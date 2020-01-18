@@ -18,12 +18,12 @@ pub fn trim<S: AsRef<[u8]>>(output: S) -> String {
 pub fn diagnostics(output: &[u8], test: &Test, project: &Project) -> Variations {
     let mut from_bytes = String::from_utf8_lossy(&output).to_string();
     from_bytes = from_bytes.replace("\r\n", "\n")
-            .replace(&test.name, "$CRATE")
-            .replace(&*project.source_dir.to_string_lossy(), "$DIR");
+            .replace(&test.name, "$CRATE");
 
+    let source_dir = project.source_dir.to_string_lossy();
     let variations = [Basic, StripCouldNotCompile]
         .iter()
-        .map(|normalization| apply(&from_bytes, *normalization))
+        .map(|normalization| apply(&from_bytes, *normalization, &source_dir))
         .collect();
 
     Variations { variations }
@@ -51,12 +51,24 @@ enum Normalization {
 
 use self::Normalization::*;
 
-fn apply(original: &str, normalization: Normalization) -> String {
+fn apply(original: &str, normalization: Normalization, source_dir: &str) -> String {
     let mut normalized = String::new();
 
     for line in original.lines() {
         if let Some(line) = filter(line, normalization) {
-            normalized += &line;
+            if line.contains(&*source_dir) {
+                if cfg!(windows) {
+                    normalized += &line
+                        .replace(&*source_dir, "$DIR")
+                        .replace("C://", "") // I know, I know.
+                        .replace('\\', "/");
+                } else {
+                    normalized += &line.replace(&*source_dir, "$DIR");
+                }
+            } else {
+                normalized += &line;
+            }
+
             if !normalized.ends_with("\n\n") {
                 normalized.push('\n');
             }
@@ -89,4 +101,16 @@ fn filter(line: &str, normalization: Normalization) -> Option<String> {
     }
 
     Some(line.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn normalization() {
+        let s = super::apply(
+            "C:\\\\foo\\bar",
+            super::Normalization::StripCouldNotCompile,
+            "C:\\\\foo\\bar");
+        assert_eq!(s, "$DIR\n")
+    }
 }

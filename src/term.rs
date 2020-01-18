@@ -15,10 +15,6 @@ pub fn bold() {
     let _ = lock().set_color(ColorSpec::new().set_bold(true));
 }
 
-pub fn bg_fg_color(bg: Color, fg: Color) {
-    let _ = lock().set_color(ColorSpec::new().set_bg(Some(bg)).set_fg(Some(fg)).set_bold(true));
-}
-
 pub fn color(color: Color) {
     let _ = lock().set_color(ColorSpec::new().set_fg(Some(color)));
 }

@@ -162,7 +162,6 @@ impl Test {
     }
 }
 
-// FIXME: Things aren't being normalized correctly.
 fn check_output(
     test: &Test,
     project: &Project,

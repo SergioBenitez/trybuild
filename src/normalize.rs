@@ -60,8 +60,8 @@ fn apply(original: &str, normalization: Normalization, source_dir: &str) -> Stri
                 if cfg!(windows) {
                     normalized += &line
                         .replace(&*source_dir, "$DIR")
-                        .replace("C://", "") // I know, I know.
-                        .replace('\\', "/");
+                        .replace('\\', "/")
+                        .replace("//?/", "");
                 } else {
                     normalized += &line.replace(&*source_dir, "$DIR");
                 }

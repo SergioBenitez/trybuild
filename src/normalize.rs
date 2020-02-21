@@ -56,18 +56,14 @@ fn apply(original: &str, normalization: Normalization, source_dir: &str) -> Stri
 
     for line in original.lines() {
         if let Some(line) = filter(line, normalization) {
-            let line = line.trim_end();
-            if line.contains(&*source_dir) {
-                if cfg!(windows) {
-                    normalized += &line
-                        .replace(&*source_dir, "$DIR")
-                        .replace('\\', "/")
-                        .replace("//?/", "");
-                } else {
-                    normalized += &line.replace(&*source_dir, "$DIR");
-                }
+            let line = line.trim_end().replace(&*source_dir, "$DIR");
+
+            if cfg!(windows) {
+                normalized += &line
+                    .replace("\\\\?\\", "")
+                    .replace('\\', "/");
             } else {
-                normalized += &line;
+                normalized += &line.replace('\\', "/");
             }
 
             if !normalized.ends_with("\n\n") {
